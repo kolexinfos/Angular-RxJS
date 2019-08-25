@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
-import { Observable, throwError, combineLatest } from 'rxjs';
-import { catchError, tap, map } from 'rxjs/operators';
+import { Observable, throwError, combineLatest, BehaviorSubject, Subject, merge, from } from 'rxjs';
+import { catchError, tap, map,  scan, shareReplay, mergeMap, toArray, filter, switchMap } from 'rxjs/operators';
 
 import { Product } from './product';
 import { Supplier } from '../suppliers/supplier';
@@ -34,6 +34,8 @@ export class ProductService {
     catchError(this.handleError)
   );
 
+
+
   productsWithCategory$ = combineLatest([
     this.products$,
     this.productCategoryService.productCategories$
@@ -45,8 +47,68 @@ export class ProductService {
         category: categories.find(c => product.categoryId === c.id).name,
         searchkKey: [product.productName]
      }) as Product)
-     )
+     ),
+     shareReplay(1)
   );
+
+private productSelectedSubject = new BehaviorSubject<number>(0);
+productSelectedAction$ = this.productSelectedSubject.asObservable();
+
+selectedProduct$ = combineLatest([
+  this.productsWithCategory$,
+  this.productSelectedAction$
+])
+  .pipe(
+    map(([products, selectedProductId]) =>
+       products.find(product => product.id === selectedProductId)
+    ),
+    tap(product => console.log('selectedProduct', product)),
+    shareReplay(1)
+  );
+
+  selectedProductChanged(selectedProductId: number): void {
+    this.productSelectedSubject.next(selectedProductId);
+  }
+
+  // tslint:disable: member-ordering
+  private productInsertedSubject = new Subject<Product>();
+  productInsertedAction$ = this.productInsertedSubject.asObservable();
+
+
+  productsWithAdd$ = merge(
+    this.productsWithCategory$,
+    this.productInsertedAction$
+  ).pipe(
+    scan((acc: Product[], value: Product) => [...acc, value])
+  );
+
+  addProduct(newProduct?: Product){
+    newProduct = newProduct || this.fakeProduct();
+    this.productInsertedSubject.next(newProduct);
+  }
+
+  // Get It All Approach
+  /* selectedProductSuppliers$ = combineLatest([
+    this.selectedProduct$,
+    this.supplierService.supplier$
+  ]).pipe(
+    map(([selectedProduct, suppliers]) =>
+    suppliers.filter(supplier => selectedProduct.supplierIds.includes(supplier.id))
+    )
+  ); */
+
+  // Just In Time Approach
+  selectedProductSuppliers$ = this.selectedProduct$
+  .pipe(
+    filter(selectedProduct => Boolean(selectedProduct)), // Check for Null
+    switchMap(selectedProduct =>
+        from(selectedProduct.supplierIds) // Create a Stream
+        .pipe(
+          mergeMap(supplierId => this.http.get<Supplier>(`${this.suppliersUrl}/${supplierId}`)),
+          toArray()
+        )
+      )
+  )
 
 
 
