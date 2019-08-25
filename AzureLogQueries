@@ -1,0 +1,7 @@
+requests 
+//| project name, url, success, operation_Name, client_Type, timestamp
+| where client_Type != "Browser" 
+//| where name contains "css"
+//| where name startswith "POST"
+//| where success == "False" 
+| where resultCode == 500
